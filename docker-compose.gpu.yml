@@ -1,0 +1,19 @@
+# Overlay that gives the containers the GPU. Enable it by uncommenting the
+# COMPOSE_FILE line in .env; without it everything still runs, on the CPU.
+# The same thing by hand:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm dev
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  dev:
+    <<: *gpu
+  lab:
+    <<: *gpu

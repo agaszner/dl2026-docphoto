@@ -1,0 +1,31 @@
+# Lab 3: the first network, an MLP on raw pixels. Trains in seconds on a CPU.
+# Copy this per experiment and change one thing at a time.
+name: lab3_mlp
+seed: 42
+
+data:
+  labels: data/raw/train.csv
+  images: data/raw/train
+  pixel_size: 64           # the photograph is reduced to pixel_size x pixel_size grey levels
+
+split:
+  strategy: by_group
+  group_column: group_strict   # layout-clean units; this is how the test set was cut
+  val_fraction: 0.2
+  seed: 3                       # the split has its own seed: changing the model seed must not move the validation set
+
+model:
+  type: mlp
+  hidden: [256, 64]
+  dropout: 0.3
+
+train:
+  epochs: 60
+  batch_size: 64
+  lr: 0.0003
+  weight_decay: 0.0001
+  log_every: 10
+
+wandb:
+  project: dl2026-docphoto
+  tags: [lab3]

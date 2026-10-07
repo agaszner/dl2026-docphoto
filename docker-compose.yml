@@ -1,0 +1,41 @@
+# One image, used for every task. Override the command to change what it does:
+#   docker compose run --rm dev python -m src.train --config configs/cnn.yaml
+# On a machine with an NVIDIA GPU, enable the overlay by uncommenting the
+# COMPOSE_FILE line in .env.
+
+x-common: &common
+  build:
+    context: .
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-1000}
+  image: dl2026-student:latest
+  # The project is mounted rather than copied, so an edit on the host takes
+  # effect immediately without a rebuild.
+  volumes:
+    - .:/workspace
+  working_dir: /workspace
+  environment:
+    # Read from .env, which docker compose picks up automatically and which
+    # .gitignore keeps out of the repository. Empty is fine: W&B then runs in
+    # whatever mode WANDB_MODE says, including disabled.
+    WANDB_API_KEY: ${WANDB_API_KEY:-}
+    WANDB_MODE: ${WANDB_MODE:-online}
+  # PyTorch DataLoader workers share memory through /dev/shm, which defaults to
+  # a very small size in containers.
+  shm_size: "8gb"
+
+services:
+  dev:
+    <<: *common
+    stdin_open: true
+    tty: true
+    command: bash
+
+  lab:
+    <<: *common
+    command: >
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
+      --ServerApp.token='' --ServerApp.password=''
+    ports:
+      - "8888:8888"

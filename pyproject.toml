@@ -1,0 +1,24 @@
+# Tool configuration only. The package itself is not installed: PYTHONPATH is
+# set to the project root in the image, so `from src.data import ...` works.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Notebooks are for exploring; lint the code that ends up in src/.
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes: unused imports and names, undefined variables
+    "I",        # import ordering
+    "B",        # bugbear: likely bugs, e.g. mutable default arguments
+    "UP",       # pyupgrade
+]
+ignore = [
+    "E501",     # line length is handled by the formatter
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

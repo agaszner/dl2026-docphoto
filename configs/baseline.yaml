@@ -1,0 +1,22 @@
+# One file per experiment. Copy this, change what you are testing, and keep the
+# file with the result so a number can always be traced back to its settings.
+name: baseline
+seed: 42
+
+data:
+  labels: data/raw/train.csv
+  images: data/raw/train
+
+split:
+  # by_group is the correct choice; random exists so you can measure the gap.
+  strategy: by_group
+  group_column: group_strict   # layout-clean units; this is how the test set was cut
+  val_fraction: 0.2
+  seed: 3                       # the split has its own seed: changing the model seed must not move the validation set
+
+model:
+  type: gradient_boosting
+
+wandb:
+  project: dl2026-docphoto
+  tags: []

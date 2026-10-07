@@ -1,0 +1,18 @@
+# The build context is sent to the daemon in full. Photographs and checkpoints
+# would make every build slow for no reason.
+.git
+.venv
+venv
+data
+models
+submissions
+wandb
+notebooks/*.ipynb
+.cache
+**/__pycache__
+*.pt
+*.pth
+*.ckpt
+.pytest_cache
+.ruff_cache
+.ipynb_checkpoints

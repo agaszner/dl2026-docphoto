@@ -1,0 +1,36 @@
+# Copy this per experiment and keep the file alongside the result, so a number
+# can always be traced back to the settings that produced it.
+name: resnet18_768
+seed: 42
+
+data:
+  labels: data/raw/train.csv
+  images: data/raw/train
+  # Resize once into data/work/ and train from there. At 384 px a ResNet-18
+  # loses to the handcrafted baseline; the defects that matter are a few
+  # pixels wide on the 2048 px originals.
+  image_size: 768
+
+split:
+  strategy: by_group        # by_group is correct; random exists to measure the gap
+  group_column: group_strict   # layout-clean units; this is how the test set was cut
+  val_fraction: 0.2
+  seed: 3                       # the split has its own seed: changing the model seed must not move the validation set
+
+model:
+  type: cnn
+  backbone: resnet18
+  pretrained: true
+
+train:
+  epochs: 15
+  batch_size: 16
+  lr: 0.0002
+  weight_decay: 0.0001
+  # Flips and small translations are safe. Blur, brightness jitter and noise
+  # change image quality, which is the thing you are predicting.
+  augment: [hflip, translate]
+
+wandb:
+  project: dl2026-docphoto
+  tags: []

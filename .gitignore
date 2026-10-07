@@ -1,0 +1,55 @@
+# Data never goes in git. It is large, it is regenerable, and it makes the
+# repository unusable for everyone else. Keep the directory, ignore the content.
+data/raw/*
+data/work/*
+!data/**/.gitkeep
+
+# Trained weights and checkpoints
+models/*
+!models/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.joblib
+*.pkl
+
+# Generated output
+submissions/*
+!submissions/.gitkeep
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Notebooks: strip output before committing, and never commit checkpoints
+.ipynb_checkpoints/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets. Kaggle tokens and API keys do not belong in a public repository.
+.env
+kaggle.json
+
+# Model and dataset caches that torch and huggingface download into the project
+.cache/
+
+# Weights & Biases local run directory
+wandb/
