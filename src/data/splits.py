@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from sympy import true
 
 from src import config
 
@@ -49,4 +50,18 @@ def build_splits(df: pd.DataFrame, group_column: str = "group_strict", val_fract
     looks like. Together they cover every row exactly once, and no value of
     `group_column` is on both sides.
     """
-    raise NotImplementedError("TASK 1: the grouped split")
+
+    groups = df[group_column].to_numpy()
+    units = np.unique(groups)
+    np.random.default_rng(seed).shuffle(units)
+
+    val_units = []
+    n_val = 0
+    for unit in units:
+        if n_val >= val_fraction * len(df):
+            break
+        val_units.append(unit)
+        n_val += int((groups == unit).sum())
+
+    is_val = np.isin(groups, val_units)
+    return np.flatnonzero(~is_val), np.flatnonzero(is_val)
