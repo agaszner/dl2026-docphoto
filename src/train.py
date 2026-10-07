@@ -109,7 +109,7 @@ def train_mlp(cfg: dict, X: np.ndarray, df: pd.DataFrame, train_idx: np.ndarray,
     validation predictions after the first and the last epoch, the trained
     model, the checkpoint path and the W&B run page.
     """
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = device or ("mps" if torch.mps.is_available() else "cpu")
     set_seed(cfg["seed"])
     tr = cfg["train"]
 
