@@ -126,7 +126,9 @@ def train_mlp(cfg: dict, X: np.ndarray, df: pd.DataFrame, train_idx: np.ndarray,
     loss_fn = torch.nn.MSELoss()           # the metric is RMSE; same minimiser
     generator = torch.Generator().manual_seed(cfg["seed"])
 
-    tracking.init_run(cfg, tags=tags)
+    wandb_run = tracking.init_run(cfg, tags=tags)
+    if wandb_run is not None:
+        wandb_run.config.update({"device": device})   # W&B's hardware panel cannot see which device torch uses
     history, snapshots = [], {}
     log(f"{cfg['name']}: {len(train_idx)} train / {len(val_idx)} val rows, {X.shape[1]} inputs, "
         f"{sum(p.numel() for p in model.parameters()):,} parameters, {device}")
