@@ -20,7 +20,8 @@ Validation RMSE on the `eval_ok` rows of the `group_strict` split (seed 3,
 | model | val RMSE |
 |---|---|
 | constant (training mean) | 0.2362 |
-| gradient boosting, 7 handcrafted features | **0.1732** |
+| gradient boosting, 7 handcrafted features | 0.1732 |
+| gradient boosting, 7 + `edge_sharp_native` (homework) | **0.1643** |
 | MLP on 64×64 pixels, last epoch (lab) | 0.2511 |
 | MLP, best epoch picked on val (lab, peeking) | 0.2248 |
 | MLP, best epoch of the best variant picked on val (lab, peeking) | 0.2219 |
@@ -40,6 +41,34 @@ epoch 1 is kept. Its validation score of 0.2427 is better than the last epoch
 but *worse than the constant predictor*. The MLP on raw pixels learns nothing
 that carries over to an unseen unit. The 0.22 from the lab came from
 choosing the epoch on the validation set itself.
+
+**One feature of my own: `edge_sharp_native`.** The baseline's worst errors
+were all tables. Two kinds stood out at native resolution:
+
+- A sharp table on a mostly blank page, predicted 0.22 against a true 0.78.
+  Every whole-frame and inner-tile sharpness measure mostly sees paper, so it
+  reads the page as blurry.
+- Dim, slightly soft 7.5 pt text, predicted 0.77 against a true 0.27. At
+  768 px a letter is seven pixels tall and the blur is gone.
+
+The feature measures the gradient magnitude on the original 2048 px frame and
+averages only its strongest 0.5 %, which are the ink edges. It then divides
+by the p95−p5 contrast. That leaves roughly one over the edge width, whatever
+the amount of text or the exposure. It became the second most important
+feature by permutation importance.
+
+| | 7 features | 8 features |
+|---|---|---|
+| the split above | 0.1732 | 0.1643 |
+| table / receipt rows | 0.2055 / 0.1125 | 0.1913 / 0.1155 |
+| leave-one-strict-unit-out, all 1794 scoreable rows | 0.1932 | 0.1902 |
+
+On the split, the gain is 0.009, just under the 0.01 that one split can
+resolve. Over all six units it shrinks to 0.003. The feature helps on unit 1
+(sparse) and unit 4, and hurts on unit 8 (prose). A paired bootstrap over the
+60 pages puts the out-of-fold difference at −0.0030, with a 95 % interval of
+[−0.0067, +0.0013]. The feature is worse on 8 % of resamples. So it is
+probably a small improvement, but not a resolved one.
 
 ## Before the lab
 

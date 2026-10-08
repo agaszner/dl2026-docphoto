@@ -8,7 +8,9 @@ one corner. Designing better ones is the homework; the docstrings say what
 each of these sees and, by omission, what none of them does.
 
 Features are computed on the 768 px cache, so every image is at the same
-scale and a sharpness number means the same thing on every row.
+scale and a sharpness number means the same thing on every row. The one
+exception is `edge_sharpness_native`, which needs the original 2048 px frame:
+at 768 px a 7.5 pt letter is seven pixels tall and its blur is gone.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from src.data.dataset import cache_dir
+from src.data.dataset import RAW, cache_dir
 
 FEATURE_SIZE = 768
 GRID = 4
@@ -76,6 +78,15 @@ def tile_dark_max(gray: np.ndarray, threshold: int = 64) -> float:
     return float(max((t < threshold).mean() for t in _tiles(gray)))
 
 
+def edge_sharpness_native(gray: np.ndarray, top: float = 0.005) -> float:
+    """Sharpness of the text strokes alone, on the original frame.
+    """
+    g = gray.astype(np.float32)
+    m = cv2.magnitude(cv2.Sobel(g, cv2.CV_32F, 1, 0), cv2.Sobel(g, cv2.CV_32F, 0, 1)).ravel()
+    k = int(m.size * (1 - top))
+    return float(np.partition(m, k)[k:].mean() / (contrast_p95_p5(gray) + 1.0))
+
+
 FEATURES = {
     "lap_var": laplacian_variance,
     "dark_frac": dark_fraction,
@@ -87,11 +98,24 @@ FEATURES = {
 }
 
 
+# Computed on the original frame instead of the cache.
+NATIVE_FEATURES = {
+    "edge_sharp_native": edge_sharpness_native,
+}
+
+
+def _native(path) -> dict:
+    img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(path)
+    return {name: fn(img) for name, fn in NATIVE_FEATURES.items()}
+
+
 def extract(image_id: str, size: int = FEATURE_SIZE) -> dict:
     gray = cv2.imread(str(cache_dir(size) / f"{image_id}.jpg"), cv2.IMREAD_GRAYSCALE)
     if gray is None:
         raise FileNotFoundError(f"{image_id} not in the {size} px cache")
-    return {name: fn(gray) for name, fn in FEATURES.items()}
+    return {name: fn(gray) for name, fn in FEATURES.items()} | _native(RAW / "train" / f"{image_id}.jpg")
 
 
 def feature_table(df: pd.DataFrame, size: int = FEATURE_SIZE, workers: int = 4) -> pd.DataFrame:
@@ -113,4 +137,4 @@ def features_of_image(path: str, size: int = FEATURE_SIZE) -> dict:
     h, w = img.shape
     f = size / max(h, w)
     gray = cv2.resize(img, (round(w * f), round(h * f)), interpolation=cv2.INTER_AREA)
-    return {name: fn(gray) for name, fn in FEATURES.items()}
+    return {name: fn(gray) for name, fn in FEATURES.items()} | {name: fn(img) for name, fn in NATIVE_FEATURES.items()}
