@@ -16,6 +16,7 @@ whole of supervised training.
 from __future__ import annotations
 
 import argparse
+import copy
 import time
 
 import numpy as np
@@ -103,18 +104,30 @@ def validate(model: torch.nn.Module, X_val: torch.Tensor, y_val: np.ndarray, ok:
 
 def train_mlp(cfg: dict, X: np.ndarray, df: pd.DataFrame, train_idx: np.ndarray, val_idx: np.ndarray,
               device: str | None = None, tags: list[str] | None = None, log=print) -> dict:
-    """Train on the pixel rows train_idx, validate on val_idx after every epoch, log everything.
+    """Train on part of train_idx, early-stop on the rest, score once on val_idx.
+
+    Early stopping chooses an epoch, so the rows it looks at are spent. They
+    come out of the training groups: whole `group_column` units, held out with
+    `build_splits` at `train.stop_fraction`. The weights of the epoch with the
+    lowest RMSE on those stop rows are kept, and `val_idx` plays no part in the
+    choice. Its curve is in the history for the plots only.
 
     `X` is the pixel table, one row per row of `df`. Returns the history, the
-    validation predictions after the first and the last epoch, the trained
-    model, the checkpoint path and the W&B run page.
+    best epoch, the validation predictions of the epoch-1 and the kept model,
+    the kept model, the checkpoint path and the W&B run page.
     """
     device = device or ("mps" if torch.mps.is_available() else "cpu")
     set_seed(cfg["seed"])
     tr = cfg["train"]
+    fit_pos, stop_pos = build_splits(df.iloc[train_idx], cfg["split"]["group_column"], tr["stop_fraction"],
+                                     cfg["split"]["seed"])
+    stop_idx, train_idx = train_idx[stop_pos], train_idx[fit_pos]
 
     scaler = Standardiser().fit(X[train_idx])
     X_tr = to_tensor(scaler.transform(X[train_idx]), device)
+    X_st = to_tensor(scaler.transform(X[stop_idx]), device)
+    y_st = df[config.TARGET].to_numpy()[stop_idx]
+    ok_st = df["eval_ok"].to_numpy()[stop_idx] == 1
     X_va = to_tensor(scaler.transform(X[val_idx]), device)
     y_tr = to_tensor(df[config.TARGET].to_numpy()[train_idx], device)
     y_va = df[config.TARGET].to_numpy()[val_idx]
@@ -130,31 +143,43 @@ def train_mlp(cfg: dict, X: np.ndarray, df: pd.DataFrame, train_idx: np.ndarray,
     if wandb_run is not None:
         wandb_run.config.update({"device": device})   # W&B's hardware panel cannot see which device torch uses
     history, snapshots = [], {}
-    log(f"{cfg['name']}: {len(train_idx)} train / {len(val_idx)} val rows, {X.shape[1]} inputs, "
+    best_stop, best_epoch, best_state = float("inf"), 0, None
+    log(f"{cfg['name']}: {len(train_idx)} train / {len(stop_idx)} stop / {len(val_idx)} val rows, {X.shape[1]} inputs, "
         f"{sum(p.numel() for p in model.parameters()):,} parameters, {device}")
     for epoch in range(1, tr["epochs"] + 1):
         t0 = time.time()
         loss = train_epoch(model, optimizer, loss_fn, X_tr, y_tr, tr["batch_size"], generator)
+        stop = validate(model, X_st, y_st, ok_st)
         val = validate(model, X_va, y_va, ok)
         train_eval = rmse(y_tr.cpu().numpy(), predict(model, X_tr))   # dropout off, as in validation
-        row = {"epoch": epoch, "train_loss": loss, "train_rmse": train_eval, "val_rmse": val,
+        if stop < best_stop:
+            best_stop, best_epoch, best_state = stop, epoch, copy.deepcopy(model.state_dict())
+        row = {"epoch": epoch, "train_loss": loss, "train_rmse": train_eval, "stop_rmse": stop, "val_rmse": val,
                "seconds": time.time() - t0}
         history.append(row)
-        tracking.log_metrics({"train_loss": loss, "train_rmse": train_eval, "val_rmse": val}, step=epoch)
+        tracking.log_metrics({"train_loss": loss, "train_rmse": train_eval, "stop_rmse": stop, "val_rmse": val},
+                             step=epoch)
         if epoch in (1, tr["epochs"]) or epoch % tr.get("log_every", 10) == 0:
-            log(f"epoch {epoch:3d}  train loss {loss:.4f}  train RMSE {train_eval:.4f}  val RMSE {val:.4f}")
-        if epoch in (1, tr["epochs"]):
+            log(f"epoch {epoch:3d}  train loss {loss:.4f}  train RMSE {train_eval:.4f}  stop RMSE {stop:.4f}  "
+                f"val RMSE {val:.4f}")
+        if epoch == 1:
             snapshots[epoch] = predict(model, X_va)
+
+    model.load_state_dict(best_state)
+    snapshots[best_epoch] = predict(model, X_va)
+    final_val = validate(model, X_va, y_va, ok)
+    log(f"kept epoch {best_epoch} (stop RMSE {best_stop:.4f}): val RMSE {final_val:.4f}")
 
     ckpt = config.ROOT / "models" / f"{cfg['name']}.pt"
     ckpt.parent.mkdir(exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "config": cfg, "in_dim": X.shape[1],
-                "scaler_mean": scaler.mean, "scaler_scale": scaler.scale}, ckpt)
-    tracking.log_checkpoint(ckpt, cfg["name"], {"val_rmse": history[-1]["val_rmse"]})
-    tracking.log_metrics({"final_val_rmse": history[-1]["val_rmse"]})
+                "scaler_mean": scaler.mean, "scaler_scale": scaler.scale, "epoch": best_epoch}, ckpt)
+    tracking.log_checkpoint(ckpt, cfg["name"], {"val_rmse": final_val, "epoch": best_epoch})
+    tracking.log_metrics({"final_val_rmse": final_val, "best_epoch": best_epoch, "best_stop_rmse": best_stop})
     url = tracking.run_url()
     tracking.finish()
-    return {"history": pd.DataFrame(history), "val_pred": snapshots[tr["epochs"]], "snapshots": snapshots,
+    return {"history": pd.DataFrame(history), "best_epoch": best_epoch, "val_rmse": final_val,
+            "val_pred": snapshots[best_epoch], "snapshots": snapshots,
             "model": model, "checkpoint": ckpt, "url": url, "val_index": val_idx, "ok": ok}
 
 
@@ -168,7 +193,7 @@ def main() -> None:
     X = pixel_table(df, cfg["data"]["pixel_size"])
     train_idx, val_idx = build_splits(df, cfg["split"]["group_column"], cfg["split"]["val_fraction"], cfg["split"]["seed"])
     result = train_mlp(cfg, X, df, train_idx, val_idx)
-    print(f"final val RMSE {result['history']['val_rmse'].iloc[-1]:.4f}  checkpoint {result['checkpoint']}  "
+    print(f"final val RMSE {result['val_rmse']:.4f} (epoch {result['best_epoch']})  checkpoint {result['checkpoint']}  "
           f"run {result['url']}")
 
 

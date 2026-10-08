@@ -12,6 +12,35 @@ By the end of the lab this folder is your project repository, public on
 GitHub, with the lab solved and committed. The project description has the
 rules; the rest of this README has the infrastructure.
 
+## Results
+
+Validation RMSE on the `eval_ok` rows of the `group_strict` split (seed 3,
+380 rows, unit 4: table and receipt).
+
+| model | val RMSE |
+|---|---|
+| constant (training mean) | 0.2362 |
+| gradient boosting, 7 handcrafted features | **0.1732** |
+| MLP on 64×64 pixels, last epoch (lab) | 0.2511 |
+| MLP, best epoch picked on val (lab, peeking) | 0.2248 |
+| MLP, best epoch of the best variant picked on val (lab, peeking) | 0.2219 |
+| MLP, early stopping on a held-out training unit (homework) | 0.2427 |
+
+**Early stopping, done honestly.** `train_mlp` holds out whole
+`group_strict` units of the *training* side (`train.stop_fraction: 0.15`)
+and keeps the weights of the epoch with the lowest RMSE on them. The
+validation set is scored once, on those weights, and plays no part in the
+choice. Split: 1176 fit / 285 stop / 380 val rows. The stop unit is unit 8,
+which holds every prose photograph on the training side. So the network never
+trains on prose, and it chooses its epoch on a family that validation does
+not contain.
+
+The stop RMSE is lowest after epoch 1 (0.1860) and rises from there, so
+epoch 1 is kept. Its validation score of 0.2427 is better than the last epoch
+but *worse than the constant predictor*. The MLP on raw pixels learns nothing
+that carries over to an unseen unit. The 0.22 from the lab came from
+choosing the epoch on the validation set itself.
+
 ## Before the lab
 
 Do these at home. In class they cost the hour.
